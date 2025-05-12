@@ -56,7 +56,7 @@ export default function LandingPage() {
               <div className="inline-block px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
                 Workforce Management Simplified
               </div>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight text-gray-900">
                 Manage your team with <span className="text-blue-600">confidence</span>
               </h1>
               <p className="text-lg text-slate-600 leading-relaxed">

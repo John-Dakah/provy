@@ -51,9 +51,8 @@ CREATE POLICY users_insert_policy ON users
 
 DROP POLICY IF EXISTS users_select_policy ON users;
 CREATE POLICY users_select_policy ON users
-  FOR SELECT
-  USING (
-    company_id IN (
-      SELECT company_id FROM users WHERE id = auth.uid()
-    )
+  FOR INSERT
+  WITH CHECK (
+    id = auth.uid()
   );
+
