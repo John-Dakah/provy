@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabase"
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -20,6 +21,29 @@ export default function LoginPage() {
   const [passwordStrength, setPasswordStrength] = useState(0)
   const [activeTab, setActiveTab] = useState("login")
   const [verificationCheckInProgress, setVerificationCheckInProgress] = useState(false)
+
+  // Check for query parameters on mount
+  useEffect(() => {
+    const errorParam = searchParams.get("error")
+    const successParam = searchParams.get("success")
+    const emailParam = searchParams.get("email")
+
+    if (errorParam === "verification_failed") {
+      setError("Email verification failed. Please try again or contact support.")
+    } else if (errorParam === "invalid_code") {
+      setError("The verification code you entered was incorrect. Please try again.")
+      if (emailParam) {
+        // Redirect back to verification page after showing the error
+        setTimeout(() => {
+          router.push(`/verify-email?email=${emailParam}`)
+        }, 3000)
+      }
+    }
+
+    if (successParam === "verified") {
+      setSuccess("Your email has been verified successfully! You can now log in.")
+    }
+  }, [searchParams, router])
 
   // Login form state
   const [loginData, setLoginData] = useState({

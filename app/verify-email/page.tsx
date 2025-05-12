@@ -1,13 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { CheckCircle2, XCircle, Loader2, RefreshCw, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { supabase } from "@/lib/supabase"
 
 export default function VerifyEmailPage() {
   const router = useRouter()
@@ -19,8 +18,12 @@ export default function VerifyEmailPage() {
   const [verificationStatus, setVerificationStatus] = useState("pending") // pending, checking, success, error
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
-  const [countdown, setCountdown] = useState(300) // 5 minutes countdown
+  const [countdown, setCountdown] = useState(1800) // 30 minutes countdown (increased from 5 minutes)
   const [isResending, setIsResending] = useState(false)
+  const [debugInfo, setDebugInfo] = useState(null)
+
+  // Create a ref for the form to programmatically submit it
+  const formRef = useRef(null)
 
   // Format countdown as MM:SS
   const formatCountdown = () => {
@@ -36,6 +39,17 @@ export default function VerifyEmailPage() {
       return () => clearTimeout(timer)
     }
   }, [countdown, verificationStatus])
+
+  // Auto-submit when 6 digits are entered
+  useEffect(() => {
+    if (verificationCode.length === 6 && formRef.current && verificationStatus === "pending") {
+      // Add a small delay to allow the user to see the complete code
+      const timer = setTimeout(() => {
+        formRef.current.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }))
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [verificationCode, verificationStatus])
 
   // Handle verification code submission
   const handleVerifyCode = async (e) => {
@@ -53,50 +67,46 @@ export default function VerifyEmailPage() {
 
     setVerificationStatus("checking")
     setError("")
+    setDebugInfo(null)
 
     try {
-      // Get user metadata to check verification code
-      const { data: userData, error: userError } = await supabase.auth.getUser()
+      console.log("Submitting verification code:", verificationCode, "for email:", email)
 
-      if (userError || !userData.user) {
-        throw new Error("Failed to get user information. Please try logging in again.")
-      }
-
-      const storedCode = userData.user.user_metadata?.verification_code
-      const expiresAt = userData.user.user_metadata?.verification_code_expires_at
-
-      // Check if code is expired
-      if (expiresAt && new Date(expiresAt) < new Date()) {
-        setError("Verification code has expired. Please request a new one.")
-        setVerificationStatus("error")
-        return
-      }
-
-      // Check if code matches
-      if (verificationCode !== storedCode) {
-        setError("Invalid verification code. Please try again.")
-        setVerificationStatus("error")
-        return
-      }
-
-      // Update user as verified
-      const { error: updateError } = await supabase.auth.updateUser({
-        data: {
-          email_verified: true,
+      // Call our server API to verify the code
+      const response = await fetch("/api/auth/verify-code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          email,
+          code: verificationCode,
+          userId: userId || "", // Include userId if available
+        }),
       })
 
-      if (updateError) {
-        throw new Error("Failed to verify email. Please try again.")
+      const data = await response.json()
+      console.log("Verification response:", data)
+      setDebugInfo(data)
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Failed to verify code")
+      }
+
+      if (!data.success) {
+        setError(data.message || "Invalid verification code. Please try again.")
+        setVerificationStatus("error")
+        return
       }
 
       // Verification successful
       setVerificationStatus("success")
+      setSuccess("Email verified successfully! You will be redirected to the dashboard.")
 
-      // Redirect to dashboard after 3 seconds
+      // Redirect to dashboard after 2 seconds
       setTimeout(() => {
         router.push("/dashboard")
-      }, 3000)
+      }, 2000)
     } catch (error) {
       console.error("Verification error:", error)
       setError(error.message || "Failed to verify email. Please try again.")
@@ -113,8 +123,11 @@ export default function VerifyEmailPage() {
 
     setIsResending(true)
     setError("")
+    setDebugInfo(null)
 
     try {
+      console.log("Resending verification code for email:", email)
+
       // Call our API to resend the verification code
       const response = await fetch("/api/auth/resend-verification", {
         method: "POST",
@@ -125,15 +138,20 @@ export default function VerifyEmailPage() {
       })
 
       const data = await response.json()
+      console.log("Resend response:", data)
+      setDebugInfo(data)
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to resend verification code")
+        throw new Error(data.error || data.message || "Failed to resend verification code")
       }
 
       // Reset countdown
-      setCountdown(300)
+      setCountdown(1800) // Reset to 30 minutes
       setVerificationStatus("pending")
       setSuccess("A new verification code has been sent to your email. It should arrive within a minute.")
+
+      // Clear the verification code input
+      setVerificationCode("")
     } catch (error) {
       console.error("Resend error:", error)
       setError(error.message || "Failed to resend verification code. Please try again.")
@@ -230,13 +248,20 @@ export default function VerifyEmailPage() {
                 <Alert variant="destructive">
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
-                <p className="text-slate-500 mt-2">Please try again or contact support if the problem persists.</p>
+                <p className="text-slate-500 mt-2">Please try again or request a new verification code.</p>
                 <div className="flex gap-4 mt-4">
                   <Button variant="outline" onClick={() => setVerificationStatus("pending")}>
                     Try Again
                   </Button>
-                  <Button asChild>
-                    <Link href="/contact">Contact Support</Link>
+                  <Button onClick={handleResendCode} disabled={isResending}>
+                    {isResending ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Resending...
+                      </>
+                    ) : (
+                      "Get New Code"
+                    )}
                   </Button>
                 </div>
               </div>
@@ -271,7 +296,7 @@ export default function VerifyEmailPage() {
                   </Alert>
                 )}
 
-                <form onSubmit={handleVerifyCode} className="w-full mt-4">
+                <form ref={formRef} onSubmit={handleVerifyCode} className="w-full mt-4">
                   <div className="space-y-4">
                     <div>
                       <div className="flex justify-between items-center mb-2">
@@ -289,10 +314,14 @@ export default function VerifyEmailPage() {
                         className="text-center text-xl tracking-widest"
                         maxLength={6}
                         required
+                        autoFocus
                       />
+                      <p className="text-xs text-slate-500 mt-1 text-center">
+                        The form will submit automatically when you enter 6 digits
+                      </p>
                     </div>
 
-                    <Button type="submit" className="w-full">
+                    <Button type="submit" className="w-full" disabled={verificationCode.length !== 6}>
                       Verify Email
                     </Button>
 
@@ -316,6 +345,16 @@ export default function VerifyEmailPage() {
                     </div>
                   </div>
                 </form>
+
+                {/* Debug information - only visible in development */}
+                {process.env.NODE_ENV === "development" && debugInfo && (
+                  <div className="mt-8 border border-gray-200 rounded-md p-4 text-left">
+                    <h3 className="text-sm font-medium mb-2">Debug Information</h3>
+                    <pre className="text-xs overflow-auto max-h-40 bg-gray-100 p-2 rounded">
+                      {JSON.stringify(debugInfo, null, 2)}
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
           </div>
