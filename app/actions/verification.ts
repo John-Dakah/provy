@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
+import { sendVerificationEmail } from "@/lib/email-service"
 
 // Create a Supabase admin client with the service role key for server-side operations
 const supabaseAdmin = createClient(
@@ -67,7 +68,6 @@ export async function resendVerificationCode(email: string) {
     }
 
     const companyName = companyData?.name || "WorkForce"
-
     console.log("Company name:", companyName)
 
     // Update user metadata with new verification code
@@ -106,76 +106,27 @@ export async function resendVerificationCode(email: string) {
 
     console.log("Updated verification record in database")
 
-    // Create email content
-    const emailContent = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-        <div style="text-align: center; margin-bottom: 20px;">
-          <div style="display: inline-block; position: relative; width: 40px; height: 40px; margin-right: 10px; vertical-align: middle;">
-            <div style="position: absolute; inset: 0; background-color: #2563eb; border-radius: 6px; transform: rotate(45deg);"></div>
-            <div style="position: absolute; inset: 4px; background-color: #3b82f6; border-radius: 3px; transform: rotate(45deg);"></div>
-            <div style="position: absolute; inset: 8px; background-color: #60a5fa; border-radius: 3px; transform: rotate(45deg);"></div>
-          </div>
-          <span style="font-size: 24px; font-weight: bold; vertical-align: middle;">WorkForce</span>
-        </div>
-        
-        <h2 style="color: #333; text-align: center;">Your Verification Code</h2>
-        
-        <p style="color: #555; line-height: 1.5;">
-          Hello ${userData.full_name || "there"},
-        </p>
-        
-        <p style="color: #555; line-height: 1.5;">
-          You requested a verification code. Please use the code below to verify your email address:
-        </p>
-        
-        <div style="text-align: center; margin: 30px 0;">
-          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 8px; font-size: 32px; font-weight: bold; letter-spacing: 5px;">
-            ${newVerificationCode}
-          </div>
-          <p style="color: #777; font-size: 14px; margin-top: 10px;">This code will expire in 30 minutes</p>
-        </div>
-        
-        <p style="color: #555; line-height: 1.5;">
-          If you didn't request this code, you can safely ignore this email.
-        </p>
-        
-        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #888; font-size: 12px;">
-          <p>© ${new Date().getFullYear()} WorkForce. All rights reserved.</p>
-          <p>${companyName}</p>
-        </div>
-      </div>
-    `
-
-    // Send the email using our simple API route
+    // Send the verification email using our email service
     try {
-      const response = await fetch(
-        new URL("/api/send-email", process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            to: email,
-            subject: "Your WorkForce Verification Code",
-            html: emailContent,
-          }),
-        },
-      )
+      const emailResult = await sendVerificationEmail({
+        email,
+        code: newVerificationCode,
+        userName: userData.full_name || "there",
+        companyName,
+      })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || "Failed to send email")
-      }
-
-      const emailResult = await response.json()
       console.log("Email sent successfully:", emailResult)
-    } catch (emailSendError) {
-      console.error("Error sending email:", emailSendError)
+
+      return {
+        success: true,
+        message: "Verification code sent successfully",
+        emailService: emailResult.service,
+        previewHtml: emailResult.previewHtml, // Only in development mode
+      }
+    } catch (emailError) {
+      console.error("Error sending email:", emailError)
       throw new Error("Failed to send verification email. Please try again.")
     }
-
-    return { success: true, message: "Verification code sent successfully" }
   } catch (error) {
     console.error("Resend verification error:", error)
     return {

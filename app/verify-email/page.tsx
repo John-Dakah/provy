@@ -7,12 +7,13 @@ import { CheckCircle2, XCircle, Loader2, RefreshCw, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { resendVerificationCode, verifyEmailCode } from "../actions/verification"
+import { supabase } from "@/lib/supabase"
 
 export default function VerifyEmailPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const email = searchParams.get("email")
+  const userId = searchParams.get("userId")
 
   const [verificationCode, setVerificationCode] = useState("")
   const [verificationStatus, setVerificationStatus] = useState("pending") // pending, checking, success, error
@@ -20,9 +21,6 @@ export default function VerifyEmailPage() {
   const [success, setSuccess] = useState("")
   const [countdown, setCountdown] = useState(300) // 5 minutes countdown
   const [isResending, setIsResending] = useState(false)
-  const [showDebug, setShowDebug] = useState(false)
-  const [debugInfo, setDebugInfo] = useState<any>({})
-  const [emailPreview, setEmailPreview] = useState<string | null>(null)
 
   // Format countdown as MM:SS
   const formatCountdown = () => {
@@ -55,20 +53,45 @@ export default function VerifyEmailPage() {
 
     setVerificationStatus("checking")
     setError("")
-    setDebugInfo({})
 
     try {
-      // Call the server action to verify the code
-      const result = await verifyEmailCode(email, verificationCode)
-      setDebugInfo(result)
+      // Get user metadata to check verification code
+      const { data: userData, error: userError } = await supabase.auth.getUser()
 
-      if (!result.success) {
-        throw new Error(result.message)
+      if (userError || !userData.user) {
+        throw new Error("Failed to get user information. Please try logging in again.")
+      }
+
+      const storedCode = userData.user.user_metadata?.verification_code
+      const expiresAt = userData.user.user_metadata?.verification_code_expires_at
+
+      // Check if code is expired
+      if (expiresAt && new Date(expiresAt) < new Date()) {
+        setError("Verification code has expired. Please request a new one.")
+        setVerificationStatus("error")
+        return
+      }
+
+      // Check if code matches
+      if (verificationCode !== storedCode) {
+        setError("Invalid verification code. Please try again.")
+        setVerificationStatus("error")
+        return
+      }
+
+      // Update user as verified
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: {
+          email_verified: true,
+        },
+      })
+
+      if (updateError) {
+        throw new Error("Failed to verify email. Please try again.")
       }
 
       // Verification successful
       setVerificationStatus("success")
-      setSuccess("Email verified successfully! You will be redirected to the dashboard.")
 
       // Redirect to dashboard after 3 seconds
       setTimeout(() => {
@@ -90,22 +113,21 @@ export default function VerifyEmailPage() {
 
     setIsResending(true)
     setError("")
-    setSuccess("")
-    setDebugInfo({})
-    setEmailPreview(null)
 
     try {
-      // Call the server action to resend the code
-      const result = await resendVerificationCode(email)
-      setDebugInfo(result)
+      // Call our API to resend the verification code
+      const response = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      })
 
-      if (!result.success) {
-        throw new Error(result.message)
-      }
+      const data = await response.json()
 
-      // If we're in development mode and have a preview HTML, show it
-      if (result.previewHtml) {
-        setEmailPreview(result.previewHtml)
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to resend verification code")
       }
 
       // Reset countdown
@@ -118,11 +140,6 @@ export default function VerifyEmailPage() {
     } finally {
       setIsResending(false)
     }
-  }
-
-  // Toggle debug info
-  const toggleDebug = () => {
-    setShowDebug(!showDebug)
   }
 
   if (!email) {
@@ -299,38 +316,6 @@ export default function VerifyEmailPage() {
                     </div>
                   </div>
                 </form>
-
-                {/* Email Preview (Development Mode) */}
-                {emailPreview && (
-                  <div className="mt-8 border border-blue-200 rounded-md p-4 bg-blue-50 dark:bg-blue-950 dark:border-blue-900">
-                    <h3 className="text-sm font-medium mb-2 text-blue-800 dark:text-blue-300">
-                      Email Preview (Development Mode)
-                    </h3>
-                    <div className="bg-white border border-gray-200 rounded-md p-2 max-h-60 overflow-auto">
-                      <div dangerouslySetInnerHTML={{ __html: emailPreview }} />
-                    </div>
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                      This preview is only visible in development mode. In production, the email will be sent to your
-                      inbox.
-                    </p>
-                  </div>
-                )}
-
-                {/* Debug button - only visible in development */}
-                <div className="mt-8 text-xs text-slate-400">
-                  <button
-                    type="button"
-                    onClick={toggleDebug}
-                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                  >
-                    {showDebug ? "Hide Debug Info" : "Show Debug Info"}
-                  </button>
-                  {showDebug && Object.keys(debugInfo).length > 0 && (
-                    <pre className="mt-2 p-2 bg-slate-100 dark:bg-slate-800 rounded text-left overflow-auto max-h-40">
-                      {JSON.stringify(debugInfo, null, 2)}
-                    </pre>
-                  )}
-                </div>
               </div>
             )}
           </div>

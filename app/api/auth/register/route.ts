@@ -1,5 +1,14 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import sgMail from "@sendgrid/mail"
+
+// Initialize SendGrid
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+  console.log("SendGrid API key set")
+} else {
+  console.warn("SendGrid API key not found")
+}
 
 // Create a Supabase client with the service role key
 const supabaseAdmin = createClient(
@@ -94,10 +103,76 @@ export async function POST(request: Request) {
       // Continue anyway, as this is not critical
     }
 
-    // Step 5: Send custom verification email with code
-    // We'll use a server action to send the email
+    // Step 5: Send verification email with SendGrid
     try {
-      await sendVerificationEmail(email, verificationCode, `${firstName} ${lastName}`, company)
+      const emailContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="display: inline-block; position: relative; width: 40px; height: 40px; margin-right: 10px; vertical-align: middle;">
+              <div style="position: absolute; inset: 0; background-color: #2563eb; border-radius: 6px; transform: rotate(45deg);"></div>
+              <div style="position: absolute; inset: 4px; background-color: #3b82f6; border-radius: 3px; transform: rotate(45deg);"></div>
+              <div style="position: absolute; inset: 8px; background-color: #60a5fa; border-radius: 3px; transform: rotate(45deg);"></div>
+            </div>
+            <span style="font-size: 24px; font-weight: bold; vertical-align: middle;">WorkForce</span>
+          </div>
+          
+          <h2 style="color: #333; text-align: center;">Verify Your Email Address</h2>
+          
+          <p style="color: #555; line-height: 1.5;">
+            Hello ${firstName} ${lastName},
+          </p>
+          
+          <p style="color: #555; line-height: 1.5;">
+            Thank you for signing up for WorkForce! To complete your registration and access all features, please use the verification code below:
+          </p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 8px; font-size: 32px; font-weight: bold; letter-spacing: 5px;">
+              ${verificationCode}
+            </div>
+            <p style="color: #777; font-size: 14px; margin-top: 10px;">This code will expire in 30 minutes</p>
+          </div>
+          
+          <p style="color: #555; line-height: 1.5;">
+            If you didn't create an account with WorkForce, you can safely ignore this email.
+          </p>
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #888; font-size: 12px;">
+            <p>© ${new Date().getFullYear()} WorkForce. All rights reserved.</p>
+            <p>${company}</p>
+          </div>
+        </div>
+      `
+
+      if (process.env.SENDGRID_API_KEY) {
+        // Use SendGrid to send the email
+        const msg = {
+          to: email,
+          from: process.env.EMAIL_FROM || "noreply@workforce-app.com",
+          subject: "Your WorkForce Verification Code",
+          html: emailContent,
+        }
+
+        console.log("Sending verification email via SendGrid to:", email)
+        const response = await sgMail.send(msg)
+        console.log("SendGrid response:", response[0].statusCode)
+      } else {
+        // Fallback to Supabase's email service
+        console.log("SendGrid API key not found, using Supabase email service")
+        await supabaseAdmin.auth.admin.generateLink({
+          type: "signup",
+          email,
+          options: {
+            data: {
+              verification_code: verificationCode,
+              full_name: `${firstName} ${lastName}`,
+              company: company,
+            },
+          },
+        })
+      }
+
+      console.log("Verification email sent successfully")
     } catch (emailError) {
       console.error("Email sending error:", emailError)
       // Continue anyway, as the user can request a new code
@@ -114,82 +189,4 @@ export async function POST(request: Request) {
     console.error("Registration error:", error)
     return NextResponse.json({ error: "Registration failed: " + (error.message || "Unknown error") }, { status: 500 })
   }
-}
-
-// Function to send verification email
-async function sendVerificationEmail(email: string, code: string, fullName: string, company: string) {
-  // In a real application, you would use a proper email service like SendGrid, Mailgun, etc.
-  // For now, we'll use a simple fetch to a hypothetical email API
-
-  const emailContent = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-      <div style="text-align: center; margin-bottom: 20px;">
-        <div style="display: inline-block; position: relative; width: 40px; height: 40px; margin-right: 10px; vertical-align: middle;">
-          <div style="position: absolute; inset: 0; background-color: #2563eb; border-radius: 6px; transform: rotate(45deg);"></div>
-          <div style="position: absolute; inset: 4px; background-color: #3b82f6; border-radius: 3px; transform: rotate(45deg);"></div>
-          <div style="position: absolute; inset: 8px; background-color: #60a5fa; border-radius: 3px; transform: rotate(45deg);"></div>
-        </div>
-        <span style="font-size: 24px; font-weight: bold; vertical-align: middle;">WorkForce</span>
-      </div>
-      
-      <h2 style="color: #333; text-align: center;">Verify Your Email Address</h2>
-      
-      <p style="color: #555; line-height: 1.5;">
-        Hello ${fullName},
-      </p>
-      
-      <p style="color: #555; line-height: 1.5;">
-        Thank you for signing up for WorkForce! To complete your registration and access all features, please use the verification code below:
-      </p>
-      
-      <div style="text-align: center; margin: 30px 0;">
-        <div style="background-color: #f5f5f5; padding: 15px; border-radius: 8px; font-size: 32px; font-weight: bold; letter-spacing: 5px;">
-          ${code}
-        </div>
-        <p style="color: #777; font-size: 14px; margin-top: 10px;">This code will expire in 30 minutes</p>
-      </div>
-      
-      <p style="color: #555; line-height: 1.5;">
-        If you didn't create an account with WorkForce, you can safely ignore this email.
-      </p>
-      
-      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #888; font-size: 12px;">
-        <p>© ${new Date().getFullYear()} WorkForce. All rights reserved.</p>
-        <p>${company}</p>
-      </div>
-    </div>
-  `
-
-  // For now, we'll just log the email content
-  console.log("Sending verification email to:", email)
-  console.log("Verification code:", code)
-
-  // In a real application, you would use an email service API here
-  // For example with SendGrid:
-  // await fetch('https://api.sendgrid.com/v3/mail/send', {
-  //   method: 'POST',
-  //   headers: {
-  //     'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
-  //     'Content-Type': 'application/json'
-  //   },
-  //   body: JSON.stringify({
-  //     personalizations: [{ to: [{ email }] }],
-  //     from: { email: 'noreply@workforce-app.com', name: 'WorkForce' },
-  //     subject: 'Your WorkForce Verification Code',
-  //     content: [{ type: 'text/html', value: emailContent }]
-  //   })
-  // })
-
-  // For this example, we'll use Supabase's email service
-  return await supabaseAdmin.auth.admin.generateLink({
-    type: "signup",
-    email,
-    options: {
-      data: {
-        verification_code: code,
-        full_name: fullName,
-        company: company,
-      },
-    },
-  })
 }

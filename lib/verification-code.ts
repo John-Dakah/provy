@@ -9,7 +9,6 @@ export function generateVerificationCode(length = 6): string {
   }
   return code
 }
-
 /**
  * Validates a verification code against the expected code
  */

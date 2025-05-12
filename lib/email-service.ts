@@ -3,6 +3,9 @@ import sgMail from "@sendgrid/mail"
 // Initialize SendGrid with API key
 if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+  console.log("SendGrid API key set")
+} else {
+  console.warn("SendGrid API key not found in environment variables")
 }
 
 interface SendEmailOptions {
@@ -17,41 +20,93 @@ interface SendEmailOptions {
  */
 export async function sendEmail({ to, subject, html, from }: SendEmailOptions) {
   try {
+    console.log("Attempting to send email to:", to)
+    console.log("From:", from || process.env.EMAIL_FROM || "default-from@example.com")
+
     // Use SendGrid if API key is available
     if (process.env.SENDGRID_API_KEY) {
       const msg = {
         to,
-        from: from || process.env.EMAIL_FROM || "noreply@workforce-app.com",
+        from: from || process.env.EMAIL_FROM || "johnariphiosd@gmail.com",
         subject,
         html,
       }
 
-      const response = await sgMail.send(msg)
-      console.log("Email sent successfully via SendGrid")
-      return {
-        success: true,
-        messageId: response[0]?.headers["x-message-id"],
-        service: "sendgrid",
+      console.log("Sending email via SendGrid...")
+
+      try {
+        const response = await sgMail.send(msg)
+        console.log("Email sent successfully via SendGrid:", response[0]?.statusCode)
+        return {
+          success: true,
+          messageId: response[0]?.headers["x-message-id"],
+          service: "sendgrid",
+        }
+      } catch (sendGridError) {
+        console.error("SendGrid error details:", sendGridError)
+        if (sendGridError.response) {
+          console.error("SendGrid API error response:", sendGridError.response.body)
+        }
+        throw sendGridError
       }
     }
-    // Fallback to console logging in development
+    // Fallback to Nodemailer if SendGrid is not configured
     else {
-      console.log("=== EMAIL CONTENT (DEVELOPMENT MODE) ===")
-      console.log(`To: ${to}`)
-      console.log(`Subject: ${subject}`)
-      console.log(`HTML: ${html}`)
-      console.log("=======================================")
+      console.log("SendGrid not configured, attempting to use Nodemailer...")
 
-      return {
-        success: true,
-        messageId: `dev-${Date.now()}`,
-        service: "console",
-        previewHtml: html,
+      try {
+        // Call our Nodemailer API route
+        const response = await fetch(
+          new URL("/api/send-email", process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              to,
+              subject,
+              html,
+            }),
+          },
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to send email via Nodemailer")
+        }
+
+        const result = await response.json()
+        console.log("Email sent via Nodemailer:", result)
+
+        return {
+          success: true,
+          messageId: result.messageId,
+          service: "nodemailer",
+          previewUrl: result.previewUrl,
+        }
+      } catch (nodemailerError) {
+        console.error("Nodemailer error:", nodemailerError)
+        throw nodemailerError
       }
     }
   } catch (error) {
     console.error("Error sending email:", error)
-    throw error
+
+    // Log the email content to console as a fallback
+    console.log("=== EMAIL CONTENT (FALLBACK) ===")
+    console.log(`To: ${to}`)
+    console.log(`Subject: ${subject}`)
+    console.log(`HTML: ${html}`)
+    console.log("=======================================")
+
+    return {
+      success: false,
+      error: error.message || "Unknown error",
+      messageId: `failed-${Date.now()}`,
+      service: "failed",
+      previewHtml: html,
+    }
   }
 }
 
@@ -101,7 +156,7 @@ export async function sendVerificationEmail({
         If you didn't create an account with WorkForce, you can safely ignore this email.
       </p>
       
-      <div style="margin-top: 30px; padding-top: "20px"; border-top: "1px solid #e0e0e0"; text-align: "center"; color: "#888"; font-size: "12px";">
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #888; font-size: 12px;">
         <p>© ${new Date().getFullYear()} WorkForce. All rights reserved.</p>
         <p>${companyName || "WorkForce"}</p>
       </div>
