@@ -1,6 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase"
+import { Loader2 } from "lucide-react"
 import {
   Activity,
   Bell,
@@ -25,7 +28,7 @@ import {
   Plus,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Button as UIButton } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -33,7 +36,53 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 
 export default function EmployeeDashboard() {
+  const router = useRouter()
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("overview")
+
+  useEffect(() => {
+    async function getUser() {
+      try {
+        const {
+          data: { user },
+          error,
+        } = await supabase.auth.getUser()
+
+        if (error || !user) {
+          router.push("/login")
+          return
+        }
+
+        // Verify user is an employee
+        const role = user.user_metadata?.role
+        if (role !== "employee") {
+          router.push("/dashboard")
+          return
+        }
+
+        setUser(user)
+        setLoading(false)
+      } catch (error) {
+        console.error("Error getting user:", error)
+        router.push("/login")
+      }
+    }
+
+    getUser()
+  }, [router])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
+          <h2 className="text-xl font-semibold">Loading employee dashboard...</h2>
+          <p className="text-slate-500">Please wait while we prepare your dashboard.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -50,38 +99,38 @@ export default function EmployeeDashboard() {
           </div>
         </div>
         <div className="flex flex-col gap-1 p-2">
-          <Button variant="ghost" className="justify-start gap-2" onClick={() => setActiveTab("overview")}>
+          <UIButton variant="ghost" className="justify-start gap-2" onClick={() => setActiveTab("overview")}>
             <LayoutDashboard size={18} />
             Dashboard
-          </Button>
-          <Button variant="ghost" className="justify-start gap-2" onClick={() => setActiveTab("tasks")}>
+          </UIButton>
+          <UIButton variant="ghost" className="justify-start gap-2" onClick={() => setActiveTab("tasks")}>
             <FileText size={18} />
             My Tasks
-          </Button>
-          <Button variant="ghost" className="justify-start gap-2" onClick={() => setActiveTab("attendance")}>
+          </UIButton>
+          <UIButton variant="ghost" className="justify-start gap-2" onClick={() => setActiveTab("attendance")}>
             <Clock size={18} />
             Attendance
-          </Button>
-          <Button variant="ghost" className="justify-start gap-2" onClick={() => setActiveTab("schedule")}>
+          </UIButton>
+          <UIButton variant="ghost" className="justify-start gap-2" onClick={() => setActiveTab("schedule")}>
             <Calendar size={18} />
             Schedule
-          </Button>
-          <Button variant="ghost" className="justify-start gap-2">
+          </UIButton>
+          <UIButton variant="ghost" className="justify-start gap-2">
             <MessageSquare size={18} />
             Messages
-          </Button>
-          <Button variant="ghost" className="justify-start gap-2">
+          </UIButton>
+          <UIButton variant="ghost" className="justify-start gap-2">
             <FileCheck size={18} />
             Documents
-          </Button>
-          <Button variant="ghost" className="justify-start gap-2">
+          </UIButton>
+          <UIButton variant="ghost" className="justify-start gap-2">
             <User size={18} />
             Profile
-          </Button>
-          <Button variant="ghost" className="justify-start gap-2">
+          </UIButton>
+          <UIButton variant="ghost" className="justify-start gap-2">
             <Settings size={18} />
             Settings
-          </Button>
+          </UIButton>
         </div>
         <div className="mt-auto p-4 border-t border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-2">
@@ -93,9 +142,14 @@ export default function EmployeeDashboard() {
               <p className="text-sm font-medium">Maria Garcia</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">Designer</p>
             </div>
-            <Button variant="ghost" size="icon" className="ml-auto">
+            <UIButton
+              variant="ghost"
+              size="icon"
+              className="ml-auto"
+              onClick={() => supabase.auth.signOut().then(() => router.push("/login"))}
+            >
               <LogOut size={18} />
-            </Button>
+            </UIButton>
           </div>
         </div>
       </div>
@@ -104,9 +158,9 @@ export default function EmployeeDashboard() {
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <header className="sticky top-0 z-10 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 h-16 flex items-center px-4 md:px-6">
-          <Button variant="outline" size="icon" className="md:hidden mr-2">
+          <UIButton variant="outline" size="icon" className="md:hidden mr-2">
             <Menu />
-          </Button>
+          </UIButton>
           <div className="relative w-full max-w-md">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500 dark:text-slate-400" />
             <Input
@@ -116,9 +170,9 @@ export default function EmployeeDashboard() {
             />
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="icon">
+            <UIButton variant="outline" size="icon">
               <Bell size={18} />
-            </Button>
+            </UIButton>
             <Avatar className size="icon">
               <Bell size={18} />
             </Avatar>
@@ -250,7 +304,7 @@ export default function EmployeeDashboard() {
                     <option>In Progress</option>
                     <option>Completed</option>
                   </select>
-                  <Button variant="outline">Filter</Button>
+                  <UIButton variant="outline">Filter</UIButton>
                 </div>
               </div>
 
@@ -303,14 +357,14 @@ export default function EmployeeDashboard() {
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold">Attendance History</h2>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
+                  <UIButton variant="outline" size="sm">
                     <ChevronLeft size={16} />
                     Previous Month
-                  </Button>
-                  <Button variant="outline" size="sm">
+                  </UIButton>
+                  <UIButton variant="outline" size="sm">
                     Next Month
                     <ChevronRight size={16} />
-                  </Button>
+                  </UIButton>
                 </div>
               </div>
 
@@ -410,14 +464,14 @@ export default function EmployeeDashboard() {
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold">My Schedule</h2>
                 <div className="flex gap-2">
-                  <Button variant="outline">
+                  <UIButton variant="outline">
                     <CalendarDays size={16} className="mr-2" />
                     View Calendar
-                  </Button>
-                  <Button>
+                  </UIButton>
+                  <UIButton>
                     <Plus size={16} className="mr-2" />
                     Request Time Off
-                  </Button>
+                  </UIButton>
                 </div>
               </div>
 
@@ -579,5 +633,16 @@ function Menu() {
       <line x1="4" x2="20" y1="6" y2="6" />
       <line x1="4" x2="20" y1="18" y2="18" />
     </svg>
+  )
+}
+
+function Button({ children, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+    >
+      {children}
+    </button>
   )
 }

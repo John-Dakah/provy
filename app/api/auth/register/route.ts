@@ -16,6 +16,9 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || "",
 )
 
+// Admin email - this user will be given admin privileges
+const ADMIN_EMAIL = "johnariphiosd@gmail.com"
+
 export async function POST(request: Request) {
   try {
     const { firstName, lastName, email, password, company } = await request.json()
@@ -31,8 +34,10 @@ export async function POST(request: Request) {
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString()
     const verificationExpiry = new Date(Date.now() + 30 * 60 * 1000) // 30 minutes from now
 
+    // Determine role - admin for specific email, manager for everyone else
+    const role = email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? "admin" : "manager"
+
     // Step 1: Register user with Supabase Auth
-    // Important: We set email_confirm to false to prevent auto-verification
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -40,6 +45,7 @@ export async function POST(request: Request) {
       user_metadata: {
         full_name: `${firstName} ${lastName}`,
         company,
+        role, // Store role in user metadata
         verification_code: verificationCode,
         verification_code_expires_at: verificationExpiry.toISOString(),
         email_verified: false,
@@ -51,7 +57,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: authError.message }, { status: 400 })
     }
 
-    console.log("User created:", authData.user.id)
+    console.log(`User created with role ${role}:`, authData.user.id)
 
     // Step 2: Create company record
     const { data: companyData, error: companyError } = await supabaseAdmin
@@ -71,14 +77,14 @@ export async function POST(request: Request) {
 
     console.log("Company created:", companyData[0].id)
 
-    // Step 3: Create user record with company ID
+    // Step 3: Create user record with company ID and role
     const { error: userError } = await supabaseAdmin.from("users").insert([
       {
         id: authData.user.id,
         email,
         full_name: `${firstName} ${lastName}`,
         company_id: companyData[0].id,
-        role: "admin", // First user is admin
+        role, // Set role in users table
       },
     ])
 
@@ -134,6 +140,10 @@ export async function POST(request: Request) {
           </div>
           
           <p style="color: #555; line-height: 1.5;">
+            You have been registered as a <strong>${role}</strong> in the system.
+          </p>
+          
+          <p style="color: #555; line-height: 1.5;">
             If you didn't create an account with WorkForce, you can safely ignore this email.
           </p>
           
@@ -160,17 +170,17 @@ export async function POST(request: Request) {
         // Fallback to Supabase's email service
         console.log("SendGrid API key not found, using Supabase email service")
         await supabaseAdmin.auth.admin.generateLink({
-                  type: "signup",
-                  email,
-                  password, // Include the password field
-                  options: {
-                    data: {
-                      verification_code: verificationCode,
-                      full_name: `${firstName} ${lastName}`,
-                      company: company,
-                    },
-                  },
-                })
+          type: "signup",
+          email,
+          options: {
+            data: {
+              verification_code: verificationCode,
+              full_name: `${firstName} ${lastName}`,
+              company: company,
+              role: role,
+            },
+          },
+        })
       }
 
       console.log("Verification email sent successfully")
