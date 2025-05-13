@@ -160,16 +160,17 @@ export async function POST(request: Request) {
         // Fallback to Supabase's email service
         console.log("SendGrid API key not found, using Supabase email service")
         await supabaseAdmin.auth.admin.generateLink({
-          type: "signup",
-          email,
-          options: {
-            data: {
-              verification_code: verificationCode,
-              full_name: `${firstName} ${lastName}`,
-              company: company,
-            },
-          },
-        })
+                  type: "signup",
+                  email,
+                  password, // Include the password field
+                  options: {
+                    data: {
+                      verification_code: verificationCode,
+                      full_name: `${firstName} ${lastName}`,
+                      company: company,
+                    },
+                  },
+                })
       }
 
       console.log("Verification email sent successfully")
